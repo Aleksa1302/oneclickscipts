@@ -1,24 +1,25 @@
 #!/bin/bash
 
 # Install PowerDNS
+echo "Installing PowerDNS..."
 apt-get update
-apt-get install -y pdns-server pdns-backend-mysql
+apt-get -y install pdns-server pdns-backend-mysql
 
-# Configure MySQL
-echo "CREATE DATABASE powerdns;" | mysql -u root -p
-echo "GRANT ALL ON powerdns.* TO 'powerdns'@'localhost' IDENTIFIED BY '$1';" | mysql -u root -p
-echo "USE powerdns;" | mysql -u root -p
-cat /usr/share/doc/pdns-backend-mysql/schema.mysql.sql | mysql -u root -p powerdns
+# Generate a strong password
+password=$(openssl rand -base64 12)
+echo "The MySQL root password is: $password"
+echo $password > mysql-root-password.txt
 
-# Update configuration files
-sed -i "s/# launch+=gmysql/launch+=gmysql/" /etc/powerdns/pdns.conf
-sed -i "s/# gmysql-host=localhost/gmysql-host=localhost/" /etc/powerdns/pdns.conf
-sed -i "s/# gmysql-user=powerdns/gmysql-user=powerdns/" /etc/powerdns/pdns.conf
-sed -i "s/# gmysql-password=password/gmysql-password=$1/" /etc/powerdns/pdns.conf
-sed -i "s/# gmysql-dbname=powerdns/gmysql-dbname=powerdns/" /etc/powerdns/pdns.conf
+# Update the MySQL root password in the pdns configuration file
+echo "Updating pdns configuration file..."
+sed -i "s/^gmysql-password=.*$/gmysql-password=$password/" /etc/powerdns/pdns.d/pdns.local.gmysql.conf
+
+# Update the MySQL root password in the pdns database
+echo "Updating MySQL root password..."
+mysql -u root -p"$password" -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '$password';"
 
 # Restart PowerDNS
+echo "Restarting PowerDNS..."
 systemctl restart pdns.service
 
-# Print MySQL root password
 echo "PowerDNS installation complete! The MySQL root password is stored in a file called mysql-root-password.txt in the current directory."
