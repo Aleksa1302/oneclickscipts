@@ -1,38 +1,44 @@
 #!/bin/bash
 
-# Generate a strong password for the MySQL user
-MYSQL_PASSWORD=$(openssl rand -base64 32)
+# Check if script is being run as root
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 
+   exit 1
+fi
 
-# Update the system packages
-sudo apt-get update
+# Install PowerDNS and MySQL
+echo "Installing PowerDNS and MySQL..."
+apt-get update
+apt-get install -y pdns-server pdns-backend-mysql mysql-server
 
-# Install PowerDNS and MySQL server
-sudo apt-get install pdns-server pdns-backend-mysql mysql-server -y
+# Prompt user for MySQL root password
+echo "Please enter the MySQL root password:"
+read -s MYSQL_ROOT_PASSWORD
 
-# Create a new database for PowerDNS
-mysql -u root -p -e "CREATE DATABASE pdns;"
-mysql -u root -p -e "GRANT ALL PRIVILEGES ON pdns.* TO 'pdns'@'localhost' IDENTIFIED BY '$MYSQL_PASSWORD';"
+# Update PowerDNS configuration file
+echo "Updating PowerDNS configuration file..."
+sed -i "s/^# launch=/launch=/" /etc/powerdns/pdns.conf
+sed -i "s/^# gmysql-host=/gmysql-host=/" /etc/powerdns/pdns.conf
+sed -i "s/^# gmysql-port=/gmysql-port=/" /etc/powerdns/pdns.conf
+sed -i "s/^# gmysql-dbname=/gmysql-dbname=/" /etc/powerdns/pdns.conf
+sed -i "s/^# gmysql-user=/gmysql-user=/" /etc/powerdns/pdns.conf
+sed -i "s/^# gmysql-password=/gmysql-password=/" /etc/powerdns/pdns.conf
+echo "gmysql-host=localhost" >> /etc/powerdns/pdns.conf
+echo "gmysql-port=3306" >> /etc/powerdns/pdns.conf
+echo "gmysql-dbname=pdns" >> /etc/powerdns/pdns.conf
+echo "gmysql-user=pdns" >> /etc/powerdns/pdns.conf
+echo "gmysql-password=$MYSQL_ROOT_PASSWORD" >> /etc/powerdns/pdns.conf
 
-# Create the PowerDNS database schema
-sudo pdnsutil create-db mysql
+# Create PowerDNS database and user
+echo "Creating PowerDNS database and user..."
+mysql -u root -p$MYSQL_ROOT_PASSWORD -e "CREATE DATABASE pdns;"
+mysql -u root -p$MYSQL_ROOT_PASSWORD -e "GRANT ALL PRIVILEGES ON pdns.* TO 'pdns'@'localhost' IDENTIFIED BY '$MYSQL_ROOT_PASSWORD';"
 
-# Update the PowerDNS configuration file
-sudo sed -i 's/^launch=.*/launch=gmysql/' /etc/powerdns/pdns.conf
-sudo sed -i 's/^gmysql-host=.*/gmysql-host=127.0.0.1/' /etc/powerdns/pdns.conf
-sudo sed -i 's/^gmysql-user=.*/gmysql-user=pdns/' /etc/powerdns/pdns.conf
-sudo sed -i "s/^gmysql-password=.*/gmysql-password=$MYSQL_PASSWORD/" /etc/powerdns/pdns.conf
+# Restart PowerDNS
+echo "Restarting PowerDNS..."
+systemctl restart pdns
 
-# Restart the PowerDNS service
-sudo systemctl restart pdns
-
-# Open port 53 and 3306 in the firewall
-sudo ufw allow 53/tcp
-sudo ufw allow 3306/tcp
-sudo ufw reload
-
-# Display the PowerDNS version and status
-sudo pdns_control version
-sudo pdns_control status
-
-# Print the MySQL password
-echo "MySQL password: $MYSQL_PASSWORD"
+# Print success message
+echo "PowerDNS installation complete! The MySQL root password is stored in a file called mysql-root-password.txt in the current directory."
+echo $MYSQL_ROOT_PASSWORD > mysql-root-password.txt
+chmod 600 mysql-root-password.txt
