@@ -1,45 +1,42 @@
 #!/bin/bash
 
-# Generate random strings for database credentials
-DB_NAME=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
-DB_USER=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
-DB_PASS=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 20 | head -n 1)
+# Generate random passwords for MySQL and PowerDNS users
+MYSQL_PASSWORD=$(openssl rand -base64 32)
+PDNS_PASSWORD=$(openssl rand -base64 32)
 
-# Install Ubuntu Server
-sudo apt-get update
-sudo apt-get install -y ubuntu-server
+# Install PowerDNS and MySQL server
+echo "Installing PowerDNS and MySQL server..."
+sudo apt update
+sudo apt install pdns-server pdns-backend-mysql mysql-server -y
 
-# Install MySQL
-sudo apt-get install -y mysql-server
+# Create a MySQL database for PowerDNS
+echo "Creating MySQL database..."
+sudo mysql -e "CREATE DATABASE pdns;"
+sudo mysql -e "CREATE USER 'pdns'@'localhost' IDENTIFIED BY '$MYSQL_PASSWORD';"
+sudo mysql -e "GRANT ALL PRIVILEGES ON pdns.* TO 'pdns'@'localhost';"
+sudo mysql -e "FLUSH PRIVILEGES;"
 
-# Configure MySQL
-sudo mysql -e "CREATE DATABASE ${DB_NAME};"
-sudo mysql -e "GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';"
+# Configure PowerDNS to use MySQL backend
+echo "Configuring PowerDNS..."
+sudo sed -i 's/^# launch=.*$/launch=gmysql/' /etc/powerdns/pdns.conf
+sudo sed -i "s/^gmysql-host=.*$/gmysql-host=localhost/" /etc/powerdns/pdns.conf
+sudo sed -i "s/^gmysql-user=.*$/gmysql-user=pdns/" /etc/powerdns/pdns.conf
+sudo sed -i "s/^gmysql-password=.*$/gmysql-password=$PDNS_PASSWORD/" /etc/powerdns/pdns.conf
+sudo sed -i "s/^gmysql-dbname=.*$/gmysql-dbname=pdns/" /etc/powerdns/pdns.conf
+sudo sed -i 's/^# gmysql-dnssec=/gmysql-dnssec=yes/' /etc/powerdns/pdns.conf
 
-# Install PowerDNS and MySQL backend
-sudo apt-get install -y pdns-server pdns-backend-mysql
+# Create a new PowerDNS user for the web interface
+echo "Creating PowerDNS user..."
+sudo pdnsutil create-admin-user
 
-# Configure PowerDNS
-sudo cat << EOF > /etc/powerdns/pdns.d/pdns.local.gmysql.conf
-launch=gmysql
-gmysql-host=localhost
-gmysql-dbname=${DB_NAME}
-gmysql-user=${DB_USER}
-gmysql-password=${DB_PASS}
-gmysql-dnssec=yes
-EOF
+# Restart PowerDNS server
+echo "Restarting PowerDNS server..."
+sudo systemctl restart pdns.service
 
-# Restart PowerDNS
-sudo systemctl restart pdns
-
-# Save passwords to a file
-sudo echo "Database Name: ${DB_NAME}" > pdns_passwords.txt
-sudo echo "Database User: ${DB_USER}" >> pdns_passwords.txt
-sudo echo "Database Password: ${DB_PASS}" >> pdns_passwords.txt
-
-# Secure the password file
-sudo chmod 600 pdns_passwords.txt
-sudo chown root:root pdns_passwords.txt
-
-# Print a message to the user
-echo "PowerDNS has been installed and configured. Passwords have been saved to pdns_passwords.txt."
+# Print login information
+echo "PowerDNS has been installed and configured."
+echo "You can access the web interface at http://localhost:8081 using the following login credentials:"
+echo "Username: admin"
+echo "Password: (the password you set for the admin user)"
+echo "The MySQL root password is: $MYSQL_PASSWORD"
+echo "The PowerDNS user password is: $PDNS_PASSWORD"
