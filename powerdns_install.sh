@@ -32,7 +32,9 @@ sudo pdnsutil create-admin-user
 # Install pdns-recursor and disable systemd-resolved
 echo "Installing pdns-recursor and disabling systemd-resolved..."
 sudo apt-get install pdns-recursor -y
-sudo systemctl disable systemd-resolved
+systemctl disable --now systemd-resolved
+rm -rf /etc/resolv.conf
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
 
 # Restart PowerDNS server
 echo "Restarting PowerDNS server..."
