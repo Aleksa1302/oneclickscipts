@@ -37,7 +37,6 @@ sudo systemctl disable systemd-resolved
 # Restart PowerDNS server
 echo "Restarting PowerDNS server..."
 sudo systemctl restart pdns.service
-sudo systemctl start pdns-recursor
 
 # Print login information
 echo "PowerDNS has been installed and configured."
