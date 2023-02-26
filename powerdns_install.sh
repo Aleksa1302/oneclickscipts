@@ -1,56 +1,45 @@
 #!/bin/bash
 
-# Check if MySQL is installed
-if ! command -v mysql &> /dev/null
-then
-    # Install MySQL
-    echo "MySQL is not installed. Installing now..."
-    sudo apt-get update
-    sudo apt-get install -y mysql-server
-fi
+# Generate random strings for database credentials
+DB_NAME=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
+DB_USER=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
+DB_PASS=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 20 | head -n 1)
 
-# Set MySQL root password
-echo "Please enter a strong password for the MySQL root user:"
-read -s sqlpassword
-
-# Secure MySQL installation
-sudo mysql_secure_installation <<EOF
-
-y
-$sqlpassword
-$sqlpassword
-y
-y
-y
-y
-EOF
-
-# Create PowerDNS database and user
-sudo mysql -u root -p$sqlpassword <<EOF
-CREATE DATABASE powerdns;
-CREATE USER 'powerdns'@'localhost' IDENTIFIED BY '$sqlpassword';
-GRANT ALL PRIVILEGES ON powerdns.* TO 'powerdns'@'localhost';
-FLUSH PRIVILEGES;
-EOF
-
-# Install PowerDNS
+# Install Ubuntu Server
 sudo apt-get update
+sudo apt-get install -y ubuntu-server
+
+# Install MySQL
+sudo apt-get install -y mysql-server
+
+# Configure MySQL
+sudo mysql -e "CREATE DATABASE ${DB_NAME};"
+sudo mysql -e "GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';"
+
+# Install PowerDNS and MySQL backend
 sudo apt-get install -y pdns-server pdns-backend-mysql
 
-# Configure PowerDNS to use MySQL
-sudo sed -i 's/# launch=gmysql/launch=gmysql/' /etc/powerdns/pdns.conf
-sudo sed -i 's|# gmysql-host=127.0.0.1|gmysql-host=localhost|' /etc/powerdns/pdns.conf
-sudo sed -i 's/# gmysql-user=powerdns/gmysql-user=powerdns/' /etc/powerdns/pdns.conf
-sudo sed -i "s/# gmysql-password=password/gmysql-password=$sqlpassword/" /etc/powerdns/pdns.conf
+# Configure PowerDNS
+sudo cat << EOF > /etc/powerdns/pdns.d/pdns.local.gmysql.conf
+launch=gmysql
+gmysql-host=localhost
+gmysql-dbname=${DB_NAME}
+gmysql-user=${DB_USER}
+gmysql-password=${DB_PASS}
+gmysql-dnssec=yes
+EOF
 
 # Restart PowerDNS
-sudo systemctl restart pdns.service
+sudo systemctl restart pdns
 
-# Check for errors
-if systemctl status pdns.service | grep -q 'failed'; then
-    echo "There was an error starting PowerDNS. Please check the system logs for more information."
-    exit 1
-fi
+# Save passwords to a file
+sudo echo "Database Name: ${DB_NAME}" > pdns_passwords.txt
+sudo echo "Database User: ${DB_USER}" >> pdns_passwords.txt
+sudo echo "Database Password: ${DB_PASS}" >> pdns_passwords.txt
 
-echo "PowerDNS installation complete! The MySQL root password is stored in a file called mysql-root-password.txt in the current directory."
-echo "The PowerDNS GUI is available at http://localhost:8081/ with username 'admin' and password '$sqlpassword'"
+# Secure the password file
+sudo chmod 600 pdns_passwords.txt
+sudo chown root:root pdns_passwords.txt
+
+# Print a message to the user
+echo "PowerDNS has been installed and configured. Passwords have been saved to pdns_passwords.txt."
