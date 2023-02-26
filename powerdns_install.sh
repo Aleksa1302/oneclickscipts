@@ -29,17 +29,15 @@ sudo sed -i 's/^# gmysql-dnssec=/gmysql-dnssec=yes/' /etc/powerdns/pdns.conf
 echo "Creating PowerDNS user..."
 sudo pdnsutil create-admin-user
 
-#install pdns-recursor
-sudo apt-get install pdns-recursor
-systemctl disable systemd-resolved
-
-
+# Install pdns-recursor and disable systemd-resolved
+echo "Installing pdns-recursor and disabling systemd-resolved..."
+sudo apt-get install pdns-recursor -y
+sudo systemctl disable systemd-resolved
 
 # Restart PowerDNS server
 echo "Restarting PowerDNS server..."
 sudo systemctl restart pdns.service
 sudo systemctl start pdns-recursor
-
 
 # Print login information
 echo "PowerDNS has been installed and configured."
