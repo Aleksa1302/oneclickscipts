@@ -1,2 +1,4 @@
 PowerDNS
 curl -sSL https://raw.githubusercontent.com/Aleksa1302/oneclickscipts/main/powerdns_install.sh | bash
+PowerDns Re
+curl -sSL https://raw.githubusercontent.com/Aleksa1302/oneclickscipts/main/powerdns_install.sh  | bash
